@@ -1,0 +1,116 @@
+#-*-coding:utf-8-*-
+"""
+读取excel中各服务器的数据，查询各个服务上各库中的filialename,
+写入excel中。无需修改，为w_mssql的附属脚本
+"""
+import pandas as pd
+import numpy as np
+import sys
+import json 
+import pymssql
+import datetime
+
+def data_get():
+    """
+excel 数据获取，返回pd"""
+    celinfo={
+        'io':'E:\\excelfile\\mol.xlsx'
+        ,'sheetname':'serverpw'
+        ,'header':0   #0表示跳过的行数后的第一行，数据从header后的下一行开始
+        ,'skiprows':2 #0表示不跳过
+        ,'skip_footer':1
+        ,'index_col':None
+        ,'na_values':['(空白)',]
+        ,'converters':{'密码':lambda x: str(x),'数据库地址':lambda x: x.replace(',',':'),}
+        ,'parse_cols':'D:H'#解析列的数据
+        ,'convert_float':True
+        }
+    data11=pd.read_excel(**celinfo)
+    print(data11.dtypes)
+    data11=data11.fillna('')
+    return data11
+
+def conf_write(data):
+    """
+将读取的数据库信息写进msconfig.py配置脚本,返回配置字典config"""
+    config={}
+    for i in range(len(data)):
+        name=data.loc[i]['数据库地址'][:-4]+data.loc[i]['库']
+        config[name]={'host':data.loc[i]['数据库地址'],'user':data.loc[i]['用户名称'],'password':data.loc[i]['密码'],'database':data.loc[i]['库'],}
+    msconfig='cfg='+str(config)
+    with open('e:/pyfile/base4/msconfig.py','w') as f:
+        f.write(msconfig)
+    print('msconfig has writed-----')
+    return config
+def sql_fetch(base,serverbase,sql,retry_num=2): 
+    """
+连接数据库，查询sql语句，返回查询结果pd(filialename,server,usercount)"""
+    try:
+        conn=pymssql.connect(**base)
+        cur=conn.cursor()
+        try:
+            cur.execute(sql)
+            fm=cur.fetchall()
+            if len(fm):
+                f=[j[0] for j in fm]
+                fcount=[j[1] for j in fm]
+                fmfiliale=pd.DataFrame({'filialename':f,'serverbase':serverbase,'usercount':fcount,})
+                return fmfiliale
+            else:
+                print(serverbase,'fm---no filialename---max(lastreadtime)>dateadd(day,-1,getdate())--')  
+        except:
+            print('sql run error ')
+    except:
+        if retry_num>0:
+            return sql_fetch(base,serverbase,sql,retry_num-1)
+        print(serverbase,'cannot connected database---')
+
+def pdDeal(pdColumns):
+    '''
+纵向合并各pd,并按列数据filialename的分布频率排序,返回pd '''
+    nowtime=datetime.datetime.now().strftime('%m%d%H%M')
+    datas=pd.concat(pdColumns,axis=0)
+    s=datas['filialename']
+    ss=s.value_counts()
+    ss=pd.DataFrame(ss)
+    ss.columns=['counts',]
+    ss['disfilialename']=ss.index
+    ss.index=range(len(ss.index))
+    order_data=pd.merge(datas,ss,how='inner',left_on='filialename',right_on='disfilialename')
+    order_data=order_data.sort_values(by=['counts'],ascending=False)
+    return order_data
+
+def data2excel(fmfiliale,filiale):
+    """
+将pd类型数据写入excel"""
+    filename='e:\\excelfile\\filialename2.xlsx'
+    print('filename is : ',filename)
+    with pd.ExcelWriter(filename) as writer:
+        try:
+            fmfiliale.to_excel(writer,sheet_name='fmfiliale') 
+            filiale.to_excel(writer,sheet_name='filiale')
+        except:
+            print('Excel write Error!')
+    print(datetime.datetime.now(),'----Done!----')
+
+if __name__=='__main__':
+    data=data_get()
+    config=conf_write(data)
+    fmfiliale=[]
+    filiale=[]
+    sql1='select filialename ,count(fmaddress) from tblfminfo where filialename in (select distinct filialename from tblfilialeinfo) group by filialename having max(lastreadtime)>dateadd(day,-1,getdate())'
+    sql2='select filialename,count(filialeid) from tblfilialeinfo group by filialename'
+    for i in config.keys():
+        if i =='10.0.water':
+            f=sql_fetch(config[i],i,sql2)
+            filiale.append(f)
+        else:
+            fm=sql_fetch(config[i],i,sql1)
+            f=sql_fetch(config[i],i,sql2)
+            fmfiliale.append(fm)
+            filiale.append(f)
+    fmfiliale=pdDeal(fmfiliale)
+    filiale=pdDeal(filiale)
+
+    data2excel(fmfiliale,filiale)
+    cc=input()
