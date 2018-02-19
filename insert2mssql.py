@@ -9,8 +9,8 @@ import sys
 import json 
 import pymssql
 import datetime 
-from base4.msconfig import cfg
-from base4.sqlconfig import config
+from msconfig import cfg
+from sqlcode import sqldic
 
 #sys.exit()
 
@@ -39,18 +39,9 @@ def insert_to(data,base):
 源数据，导入数据库,返回数据 库连接conn,cur"""
     conn=pymssql.connect(**base)
     cur=conn.cursor()
-    sql='truncate table tmp_create_fminfo'
-    addmeter='alter table tmp_create_fminfo add MeterDiameter varchar(30),MeterGG varchar(30)'
-    creat='''create table tmp_create_fminfo
-    (
-   simid varchar(20),
-   fmaddress varchar(20),
-   usertype  varchar(20),
-   bore  varchar(20),
-   createtime DATETIME,
-   filialename varchar(100),
-   MeterDiameter varchar(30),
-   MeterGG varchar(30))'''
+    sql=sqldic["insert_sql"]
+    addmeter=sqldic["insert_addmeter"]
+    creat=sqldic["insert_create"]
     try:
         cur.execute(sql)
     except:
@@ -58,9 +49,7 @@ def insert_to(data,base):
     columns=[]
     if data.shape==(11,):
         meter=re.match(r'(MAG\d{6,7})[（(](\d{2,3})mm[）)]',data[7])
-        sql2='''insert into tmp_create_fminfo(simid , fmaddress , usertype  , bore,MeterGG,MeterDiameter, createtime, filialename)
-        values('{0}','{1}','{2}','{3}','{4}','{5}','{6}','{7}')-- [手机号码],[用户编号],[用户类型],[仪表类型],[装卡日期],[filialename]
-    '''.format(data[5],data[2],data[1],data[7],meter.group(1),meter.group(2),data[9],data[0])
+        sql2=sqldic["insert_sqk2"].format(data[5],data[2],data[1],data[7],meter.group(1),meter.group(2),data[9],data[0])
         try:
             cur.execute(sql2)
         except:
@@ -73,9 +62,7 @@ def insert_to(data,base):
             if meter==None:
                 print(num[7])
 
-            sql2='''insert into tmp_create_fminfo(simid , fmaddress , usertype, bore,MeterGG,MeterDiameter, createtime, filialename)
-            values('{0}','{1}','{2}','{3}','{4}','{5}','{6}','{7}')-- [手机号码],[用户编号],[用户类型],[仪表类型],[装卡日期],[filialename]-- ,[手机编码]
-        '''.format(num[5],num[2],num[1],num[7],meter.group(1),meter.group(2),num[9],num[0])
+            sql2=sqldic["insert_sql22"].format(num[5],num[2],num[1],num[7],meter.group(1),meter.group(2),num[9],num[0])
             try:
                 cur.execute(sql2)
             except:
@@ -88,40 +75,26 @@ def update_to(conn,cur):
     """
 更新数据库中数据,返回更新的userid列表"""
     #1.更新临时表中的数据格式
-    sql1=''' select count(1) from  tmp_create_fminfo'''
+    sql1=sqldic["update_sql1"]
     cur.execute(sql1)
     inNum=cur.fetchone()
     print('tmp data number: ----',inNum[0])
     #2.查询将被写入tbluserinfo中的表编码、filialename
-    sql2_1='''SELECT a.fmaddress, b.FilialeName FROM tmp_create_fminfo a,dbo.tblFilialeInfo b WHERE a.filialename=b.FilialeName
-    AND a.fmaddress NOT IN (SELECT userid FROM tbluserinfo)'''
+    sql2_1=sqldic["update_sql2_1"]
     cur.execute(sql2_1)
     fmname=cur.fetchall()
     filiale=set([i[1] for i in fmname if fmname])
     print('###---------￥￥￥￥---distinnct filialename is :',filiale)
     usrid=[i[0] for i in fmname if fmname]
     #3. 数据写入tbluserinfo
-    sql2='''INSERT INTO tbluserinfo(Officerid,ModifyTime,UserType,userid,username,UserAddress,PrecinctID,FilialeID,InstallDate,AccountsID,cityid,CityName,PrecinctName,FilialeName)
-    SELECT b.OfficerID,CONVERT(VARCHAR(16),GETDATE(),121),usertype,a.fmaddress,a.fmaddress,a.fmaddress,b.PrecinctID,b.FilialeID,CONVERT(VARCHAR(10),a.createtime,121),b.AccountsID,
-    b.CityId,b.CityName,b.PrecinctName,b.FilialeName FROM tmp_create_fminfo a,dbo.tblFilialeInfo b WHERE a.filialename=b.FilialeName
-    AND a.fmaddress NOT IN (SELECT userid FROM tbluserinfo) '''
+    sql2=sqldic["update_sql2"]
     cur.execute(sql2)
     usercount=cur.rowcount
     print('###---------￥￥￥￥---insert into tbluserinfo data number: ----',usercount)
     
     #4. 数据写入tblfminfo
-    sql3='''INSERT INTO tblfminfo(Officerid,userid,username,simid,fmtype,fmaddress,installdate,AccountsID,FilialeID,FilialeName,cityid,CityName,PrecinctID,PrecinctName)
-    SELECT b.OfficerID,a.fmaddress,a.fmaddress,a.simid,c.MeterTypeCode,a.fmaddress,CONVERT(VARCHAR(10),a.createtime,121),b.AccountsID,b.FilialeID,b.FilialeName,
-    b.cityid,b.CityName,b.PrecinctID,b.PrecinctName
-    FROM tmp_create_fminfo a,dbo.tblFilialeInfo b,dbo.tblMeterType c WHERE a.filialename=b.FilialeName AND a.MeterGG=c.MeterGG 
-    and (a.MeterDiameter+'mm'=c.MeterDiameter or 'DN'+a.MeterDiameter=c.MeterDiameter)
-    and a.simid not in (select simid from tblfminfo)'''
-    sql3_1='''INSERT INTO tblfminfo(Officerid,userid,username,simid,fmtype,fmaddress,installdate,AccountsID,FilialeID,FilialeName,cityid,CityName,PrecinctID,PrecinctName)
-    SELECT b.OfficerID,a.fmaddress,a.fmaddress,a.simid,c.MeterTypeCode,a.fmaddress,CONVERT(VARCHAR(10),a.createtime,121),b.AccountsID,b.FilialeID,b.FilialeName,
-    b.cityid,b.CityName,b.PrecinctID,b.PrecinctName
-    FROM tmp_create_fminfo a,dbo.tblFilialeInfo b,dbo.tblMeterType c WHERE a.filialename=b.FilialeName AND c.MeterGG='GPRS大表' 
-    and (a.MeterDiameter+'mm'=c.MeterDiameter or 'DN'+a.MeterDiameter=c.MeterDiameter)
-    and a.simid not in (select simid from tblfminfo)'''
+    sql3=sqldic["update_sql3"]
+    sql3_1=sqldic["update_sql3_1"]
     cur.execute(sql3)
     fmcount=cur.rowcount
     if usercount==fmcount:
@@ -153,11 +126,9 @@ def check_orgid(usrid,conn,cur):
         return None
     else:    
 
-        sql='''select case a.orgid
-       when b.preid then 1 else 0 end ,a.orgid ,b.preid ,b.userid from tblfminfo a, tbluserinfo b 
-        where a.fmaddress = b.userid  and b.userid in  (%s) '''
+        sql=sqldic["check_sql"]
         userid="','".join(usrid) 
-        sql2='select filialename,max(orgid),middle(orgid),min(orgid) from tblfminfo where fmaddress in (%s) group by filialename'
+        sql2=sqldic["check_sql2"]
         try:
             cur.execute(sql,userid)
             for i in cur:
