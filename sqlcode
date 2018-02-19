@@ -1,0 +1,45 @@
+sqldic={
+"insert_sql":'''truncate table tmp_create_fminfo''',
+"insert_addmeter":'''alter table tmp_create_fminfo add MeterDiameter varchar(30),MeterGG varchar(30)''',
+"insert_create":'''create table tmp_create_fminfo
+    (
+   simid varchar(20),
+   fmaddress varchar(20),
+   usertype  varchar(20),
+   bore  varchar(20),
+   createtime DATETIME,
+   filialename varchar(100),
+   MeterDiameter varchar(30),
+   MeterGG varchar(30))''',
+"insert_sql2":'''insert into tmp_create_fminfo(simid , fmaddress , usertype  , bore,MeterGG,MeterDiameter, createtime, filialename)
+        values('{0}','{1}','{2}','{3}','{4}','{5}','{6}','{7}')-- [手机号码],[用户编号],[用户类型],[仪表类型],[装卡日期],[filialename]
+    ''',
+"insert_sql22":'''insert into tmp_create_fminfo(simid , fmaddress , usertype, bore,MeterGG,MeterDiameter, createtime, filialename)
+            values('{0}','{1}','{2}','{3}','{4}','{5}','{6}','{7}')-- [手机号码],[用户编号],[用户类型],[仪表类型],[装卡日期],[filialename]-- ,[手机编码]
+        ''',
+"update_sql1":''' select count(1) from  tmp_create_fminfo''',
+"update_sql2_1":'''SELECT a.fmaddress, b.FilialeName FROM tmp_create_fminfo a,dbo.tblFilialeInfo b WHERE a.filialename=b.FilialeName
+    AND a.fmaddress NOT IN (SELECT userid FROM tbluserinfo)''',
+"update_sql2":'''INSERT INTO tbluserinfo(Officerid,ModifyTime,UserType,userid,username,UserAddress,PrecinctID,FilialeID,InstallDate,AccountsID,cityid,CityName,PrecinctName,FilialeName)
+    SELECT b.OfficerID,CONVERT(VARCHAR(16),GETDATE(),121),usertype,a.fmaddress,a.fmaddress,a.fmaddress,b.PrecinctID,b.FilialeID,CONVERT(VARCHAR(10),a.createtime,121),b.AccountsID,
+    b.CityId,b.CityName,b.PrecinctName,b.FilialeName FROM tmp_create_fminfo a,dbo.tblFilialeInfo b WHERE a.filialename=b.FilialeName
+    AND a.fmaddress NOT IN (SELECT userid FROM tbluserinfo) ''',
+"update_sql3":'''INSERT INTO tblfminfo(Officerid,userid,username,simid,fmtype,fmaddress,installdate,AccountsID,FilialeID,FilialeName,cityid,CityName,PrecinctID,PrecinctName)
+    SELECT b.OfficerID,a.fmaddress,a.fmaddress,a.simid,c.MeterTypeCode,a.fmaddress,CONVERT(VARCHAR(10),a.createtime,121),b.AccountsID,b.FilialeID,b.FilialeName,
+    b.cityid,b.CityName,b.PrecinctID,b.PrecinctName
+    FROM tmp_create_fminfo a,dbo.tblFilialeInfo b,dbo.tblMeterType c WHERE a.filialename=b.FilialeName AND a.MeterGG=c.MeterGG 
+    and (a.MeterDiameter+'mm'=c.MeterDiameter or 'DN'+a.MeterDiameter=c.MeterDiameter)
+    and a.simid not in (select simid from tblfminfo)''',
+    
+"update_sql3_1":'''INSERT INTO tblfminfo(Officerid,userid,username,simid,fmtype,fmaddress,installdate,AccountsID,FilialeID,FilialeName,cityid,CityName,PrecinctID,PrecinctName)
+    SELECT b.OfficerID,a.fmaddress,a.fmaddress,a.simid,c.MeterTypeCode,a.fmaddress,CONVERT(VARCHAR(10),a.createtime,121),b.AccountsID,b.FilialeID,b.FilialeName,
+    b.cityid,b.CityName,b.PrecinctID,b.PrecinctName
+    FROM tmp_create_fminfo a,dbo.tblFilialeInfo b,dbo.tblMeterType c WHERE a.filialename=b.FilialeName AND c.MeterGG='GPRS大表' 
+    and (a.MeterDiameter+'mm'=c.MeterDiameter or 'DN'+a.MeterDiameter=c.MeterDiameter)
+    and a.simid not in (select simid from tblfminfo)''',
+"check_sql":'''select case a.orgid
+       when b.preid then 1 else 0 end ,a.orgid ,b.preid ,b.userid from tblfminfo a, tbluserinfo b 
+        where a.fmaddress = b.userid  and b.userid in  (%s) ''',
+"check_sql2":'''select filialename,max(orgid),middle(orgid),min(orgid) from tblfminfo where fmaddress in (%s) group by filialename''',
+}
+
